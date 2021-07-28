@@ -104,7 +104,7 @@ namespace TodoApp
 look how our api on swagger ui
 
 Once the application is running we need to try it the api on swagger ui and there see we get the response.
-or you can copy this `https://localhost:5001/api/todo/` url to browser see what you get the success response 
+or you can copy this `http://localhost:5000/api/todo/` url to browser see what you get the success response 
 
 ![swagger](https://user-images.githubusercontent.com/63085636/127113042-d7f9c1de-773e-4f0c-9f97-b0c53c231bc4.PNG)
 
