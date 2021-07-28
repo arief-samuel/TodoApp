@@ -1,4 +1,4 @@
-# Create Restful Web API using .NET 5 and SQLITE with Entity Framework
+# Create Restful Web API using .NET 6 and SQLITE with Entity Framework
 
 ### Pre-Requisite
 The 4 things that we will need before we start:
@@ -331,7 +331,7 @@ it's return `204 No Content`
 Delete todo, DELETE `http://localhost:5000/api/Todo/1` also it's return `204 No Content`
 ![delete](https://user-images.githubusercontent.com/63085636/127213850-454319dc-b69e-4fad-9744-e2fa9c1c17a3.png)
 
-Finally since we are using .Net 5 when creating webapi project Swagger will be already integrated within our application, in order for us to see the swagger interface we need to go to (http://localhost:5000/swagger/index.html)
+Finally since we are using .Net 6 when creating webapi project Swagger will be already integrated within our application, in order for us to see the swagger interface we need to go to (http://localhost:5000/swagger/index.html)
 
 ![swagger](https://user-images.githubusercontent.com/63085636/127214104-bbbbf141-425a-4a93-b6a0-1d11eae56e33.png)
 
