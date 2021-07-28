@@ -105,6 +105,7 @@ look how our api on swagger ui
 
 Once the application is running we need to try it the api on swagger ui and there see we get the response.
 or you can copy this `https://localhost:5001/api/todo/` url to browser see what you get the success response 
+
 ![swagger](https://user-images.githubusercontent.com/63085636/127113042-d7f9c1de-773e-4f0c-9f97-b0c53c231bc4.PNG)
 
 After testing it we now need to start adding models, we add a models folder in the root directory and we add a class inside of it called Item. This is going to be a very simple model which represent our todo list item.
@@ -331,6 +332,8 @@ Delete todo, DELETE `http://localhost:5000/api/Todo/1` also it's return `204 No 
 ![delete](https://user-images.githubusercontent.com/63085636/127213850-454319dc-b69e-4fad-9744-e2fa9c1c17a3.png)
 
 Finally since we are using .Net 5 when creating webapi project Swagger will be already integrated within our application, in order for us to see the swagger interface we need to go to (http://localhost:5000/swagger/index.html)
+
+![swagger](https://user-images.githubusercontent.com/63085636/127214104-bbbbf141-425a-4a93-b6a0-1d11eae56e33.png)
 
 Swagger allows you to describe the structure of your APIs so that machines can read them, at no extra work from our side other then defining swagger in older version of .net core swagger will be able to read our API structure and give us a UI that we can use to enhance our dev experience
 
