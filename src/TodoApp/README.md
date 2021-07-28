@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 # Create Restful Web API using .NET 6 and SQLITE with Entity Framework
 
 ### Pre-Requisite
@@ -25,13 +23,11 @@ Once thats finish we need to create our application
 > dotnet new webapi -n TodoApp --no-https
 
 ### Setup development environment on vscode
+Now lets open VS code and check our application and check the source code, lets build the application and see if its running
 
 Click yes on Required Asset to build and debug :
 
 ![requiredasset](https://user-images.githubusercontent.com/63085636/127107840-236a0efc-cb0f-4c19-8299-1788571c3288.PNG)
-
-
-Now lets open VS code and check our application and check the source code, lets build the application and see if its running
 
 ```bash
 dotnet build
@@ -43,8 +39,7 @@ Add build group on tasks.json
 "problemMatcher": "$msCompile",
 "group": {"kind": "build","isDefault": true}
 ```
-
- you can also use shortcut command `CTRL + SHIFT + B`
+you can also use shortcut command `CTRL + SHIFT + B`
 
 Add `"uriFormat": "%s/swagger"` on serverReadyAction for auto lunch swagger url when run our application
 
@@ -62,7 +57,6 @@ Now lets add the packages that we will nee in order of us to utilise the EntityF
 dotnet add package Microsoft.EntityFrameworkCore.Sqlite
 dotnet add package Microsoft.EntityFrameworkCore.Tools
 ```
-
 
 Let check the .csproj file and see package was add onto our project
 
@@ -340,4 +334,3 @@ Finally since we are using .Net 6 when creating webapi project Swagger will be a
 Swagger allows you to describe the structure of your APIs so that machines can read them, at no extra work from our side other then defining swagger in older version of .net core swagger will be able to read our API structure and give us a UI that we can use to enhance our dev experience
 
 Thank you for reading this article
->>>>>>> fe113a5ff8cca44a4ac71df58dd2ede289a2b8e1
