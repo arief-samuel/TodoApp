@@ -357,4 +357,5 @@ Thank you for taking the time and reading the article
 This is Part 2 of API dev series you can check the different parts by following the links:
 
 Part 1: https://arief21.azurewebsites.net/2021/06/28/create-restful-web-api-using-net-6-and-sqlite-with-entity-framework
+
 Part 3: https://arief21.azurewebsites.net/
