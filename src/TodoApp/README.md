@@ -175,98 +175,113 @@ public class RegistrationResponse : AuthResult
 ```
 Now we need to add our user registration controller, inside our controller folder we add a new class we call it AuthManagementController and we update it with the code below
 ```csharp
-[Route("api/[controller]")] // api/authmanagement
-[ApiController]
-public class AuthManagementController : ControllerBase
+using System;
+using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using TodoApp.Configuration;
+using TodoApp.Dtos.Requests;
+using TodoApp.Dtos.Responses;
+
+namespace TodoApp.Controller
 {
-    private readonly UserManager<IdentityUser> _userManager;
-    private readonly JwtConfig _jwtConfig;
-
-    public AuthManagementController(UserManager<IdentityUser> userManager, IOptionsMonitor<JwtConfig> optionsMonitor)
+    [Route("api[controller]")]
+    [ApiController]
+    public class AuthManagementController : ControllerBase
     {
-        _userManager = userManager;
-        _jwtConfig = optionsMonitor.CurrentValue;
-    }
+        private readonly UserManager<IdentityUser> _userManager;
+        private readonly JwtConfig _jwtConfig;
 
-    [HttpPost]
-    [Route("Register")]
-    public async Task<IActionResult> Register([FromBody] UserRegistrationRequestDto user)
-    {
-        // Check if the incoming request is valid
-        if(ModelState.IsValid)
+        public AuthManagementController(
+            UserManager<IdentityUser> userManager,
+            IOptionsMonitor<JwtConfig> optionsMonitor)
         {
-            // check i the user with the same email exist
-            var existingUser = await _userManager.FindByEmailAsync(user.Email);
-
-            if(existingUser != null) 
-            {
-                return BadRequest(new RegistrationResponse() {
-                                        Result = false,
-                                        Errors = new List<string>(){
-                                            "Email already exist"
-                                        }});
-            }
-
-            var newUser = new IdentityUser(){Email = user.Email, UserName = user.Email};
-            var isCreated = await _userManager.CreateAsync(newUser, user.Password);
-            if(isCreated.Succeeded)
-            {
-                var jwtToken = GenerateJwtToken(newUser);
-
-                return Ok(new RegistrationResponse() {
-                        Result = true, 
-                        Token = jwtToken
-                });
-            }
-
-            return new JsonResult(new RegistrationResponse(){
-                    Result = false,
-                    Errors = isCreated.Errors.Select(x => x.Description).ToList()}
-                    ) {StatusCode = 500};
+            _userManager = userManager;
+            _jwtConfig = optionsMonitor.CurrentValue;
         }
 
-        return BadRequest(new RegistrationResponse() {
-                                        Result = false,
-                                        Errors = new List<string>(){
-                                            "Invalid payload"
-                                        }});
-    }
+        [HttpPost("register")]
+        public async Task<IActionResult> Register(
+            [FromBody] UserRegistrationRequestDto user)
+        {
+            // Check if the incoming request is valid
+            if (!ModelState.IsValid)
+                return BadRequest(new RegistrationResponse()
+                {
+                    Result = false,
+                    Errors = new List<string>(){
+                        "Invalid Payload"
+                    }
+                });
+
+            // check i the user with the same email exist
+            var existingUser = await _userManager.FindByEmailAsync(user.Email);
+            if (existingUser is not null)
+                return BadRequest(new RegistrationResponse()
+                {
+                    Result = false,
+                    Errors = new List<string>(){
+                        "Email already exist"
+                    }
+                });
+
+            var newUser = new IdentityUser() { Email = user.Email, UserName = user.Name };
+            var isCreated = await _userManager.CreateAsync(newUser, user.Password);
+            if (!isCreated.Succeeded)
+                return new JsonResult(new RegistrationResponse()
+                {
+                    Result = false,
+                    Errors = isCreated.Errors.Select(x => x.Description).ToList()
+                })
+                { StatusCode = 500 };
+
+            var jwtToken = GenerateJwtToken(newUser);
+            return Ok(new RegistrationResponse()
+            {
+                Result = true,
+                Token = jwtToken
+            });
+        }
 
         private string GenerateJwtToken(IdentityUser user)
-    {
-        // Now its ime to define the jwt token which will be responsible of creating our tokens
-        var jwtTokenHandler = new JwtSecurityTokenHandler();
+        {
+            // Now its time to define the jwt token which will be responsible of creating our tokens
+            var jwtTokenHandler = new JwtSecurityTokenHandler();
 
-        // We get our secret from the appsettings
-        var key = Encoding.ASCII.GetBytes(_jwtConfig.Secret);
+            // We get our secret from the appsettings
+            var key = Encoding.ASCII.GetBytes(_jwtConfig.Secret);
 
-        // we define our token descriptor
+            // we define our token descriptor
             // We need to utilise claims which are properties in our token which gives information about the token
             // which belong to the specific user who it belongs to
             // so it could contain their id, name, email the good part is that these information
             // are generated by our server and identity framework which is valid and trusted
-        var tokenDescriptor = new SecurityTokenDescriptor
-        {
-            Subject = new ClaimsIdentity(new []
+            var tokenDescriptor = new SecurityTokenDescriptor
             {
-                new Claim("Id", user.Id),
-                new Claim(JwtRegisteredClaimNames.Sub, user.Email),
-                new Claim(JwtRegisteredClaimNames.Email, user.Email),
-                // the JTI is used for our refresh token which we will be convering in the next video
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-            }),
-            // the life span of the token needs to be shorter and utilise refresh token to keep the user signedin
-            // but since this is a demo app we can extend it to fit our current need
-            Expires = DateTime.UtcNow.AddHours(6),
-            // here we are adding the encryption alogorithim information which will be used to decrypt our token
-            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha512Signature)
-        };
+                Subject = new ClaimsIdentity(new[]{
+                    new Claim("Id", user.Id),
+                    new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+                    new Claim(JwtRegisteredClaimNames.Email,user.Email),
+                    // the JTI is used for our refresh token which we will be convering in the next video
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+                }),
+                // the life span of the token needs to be shorter and utilise refresh token to keep the user signedin
+                Expires = DateTime.Now.AddHours(6),
+                // here we are adding the encryption alogorithim information which will be used to decrypt our token
+                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha512Signature)
+            };
+            var token = jwtTokenHandler.CreateToken(tokenDescriptor);
+            var jwtToken = jwtTokenHandler.WriteToken(token);
 
-        var token = jwtTokenHandler.CreateToken(tokenDescriptor);
-
-        var jwtToken = jwtTokenHandler.WriteToken(token);
-
-        return jwtToken;
+            return jwtToken;
+        }
     }
 }
 ```
@@ -286,54 +301,46 @@ public class UserLoginRequest
 After that we need to add our login action in the AuthManagementControtller
 
 ```csharp
-[HttpPost]
-[Route("Login")]
-public async Task<IActionResult> Login([FromBody] UserLoginRequest user)
-{
-    if(ModelState.IsValid)
-    {
-        // check if the user with the same email exist
-        var existingUser = await _userManager.FindByEmailAsync(user.Email);
-
-        if(existingUser == null) 
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] UserLoginRequest user)
         {
-            // We dont want to give to much information on why the request has failed for security reasons
-            return BadRequest(new RegistrationResponse() {
-                                    Result = false,
-                                    Errors = new List<string>(){
-                                        "Invalid authentication request"
-                                    }});
-        }
+            if (!ModelState.IsValid)
+                return BadRequest(new RegistrationResponse()
+                {
+                    Result = false,
+                    Errors = new List<string>(){
+                                         "Invalid payload"
+                                    }
+                });
 
-        // Now we need to check if the user has inputed the right password
-        var isCorrect = await _userManager.CheckPasswordAsync(existingUser, user.Password);
+            var existingUser = await _userManager.FindByEmailAsync(user.Email);
+            if (existingUser is null)
+                return BadRequest(new RegistrationResponse()
+                {
+                    Result = false,
+                    Errors = new List<string>(){
+                        "Invalid authentication request"
+                    }
+                });
 
-        if(isCorrect)
-        {
+            // Now we need to check if the user has inputed the right password   
+            var isCorrect = await _userManager.CheckPasswordAsync(existingUser, user.Password);
+            if (!isCorrect)
+                return BadRequest(new RegistrationResponse()
+                {
+                    Result = false,
+                    Errors = new List<string>(){
+                            "Invalid authentication request"
+                                    }
+                });
+
             var jwtToken = GenerateJwtToken(existingUser);
-
-            return Ok(new RegistrationResponse() {
-                    Result = true, 
-                    Token = jwtToken
+            return Ok(new RegistrationResponse()
+            {
+                Result = true,
+                Token = jwtToken
             });
         }
-        else 
-        {
-             // We dont want to give to much information on why the request has failed for security reasons
-            return BadRequest(new RegistrationResponse() {
-                                    Result = false,
-                                    Errors = new List<string>(){
-                                         "Invalid authentication request"
-                                    }});
-        }
-    }
-
-    return BadRequest(new RegistrationResponse() {
-                                    Result = false,
-                                    Errors = new List<string>(){
-                                        "Invalid payload"
-                                    }});
-}
 ```
 
 now we can test it out and we can see that our jwt tokens has been generated successfully, the next step is to secure our controller, to do that all we need to do is add the Authorise attribute to the controller
@@ -349,5 +356,5 @@ Thank you for taking the time and reading the article
 
 This is Part 2 of API dev series you can check the different parts by following the links:
 
-Part 1:https://dev.to/moe23/asp-net-core-5-rest-api-step-by-step-2mb6
+Part 1: https://dev.to/moe23/asp-net-core-5-rest-api-step-by-step-2mb6
 Part 3: https://dev.to/moe23/refresh-jwt-with-refresh-tokens-in-asp-net-core-5-rest-api-step-by-step-3en5
