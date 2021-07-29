@@ -356,5 +356,5 @@ Thank you for taking the time and reading the article
 
 This is Part 2 of API dev series you can check the different parts by following the links:
 
-Part 1: https://dev.to/moe23/asp-net-core-5-rest-api-step-by-step-2mb6
-Part 3: https://dev.to/moe23/refresh-jwt-with-refresh-tokens-in-asp-net-core-5-rest-api-step-by-step-3en5
+Part 1: https://arief21.azurewebsites.net/2021/06/28/create-restful-web-api-using-net-6-and-sqlite-with-entity-framework
+Part 3: https://arief21.azurewebsites.net/
