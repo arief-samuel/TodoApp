@@ -1,361 +1,384 @@
+Hello friends, In this article I will be showing you today How to add refresh tokens to our JWT authentication to our Asp.Net Core REST API
+
+Some of the topics we will cover are refresh tokens and New endpoints functionalities and utilising JWTs ("Json Web Tokens") and Bearer authentication.
+
+You can also watch the full step by step video on YouTube:
+
 As well download the source code:
-https://github.com/arief-samuel/TodoApp/tree/Base
+https://github.com/mohamadlawand087/v8-refreshtokenswithJWT
 
-This is Part 2 of API dev series you can check the different parts by following the links:
+This is Part 3 of API dev series you can check the different parts by following the links:
 
-Part 1: https://arief21.azurewebsites.net/asp-net-core-5-rest-api-step-by-step-2mb6
-Part 3: https://arief21.azurewebsites.net/refresh-jwt-with-refresh-tokens-in-asp-net-core-5-rest-api-step-by-step-3en5
-We will be basing our current work on our previous Todo REST API application that we have created in our last article (https://arief21.azurewebsites.net/asp-net-core-5-rest-api-step-by-step-2mb6).
-
-You can follow along by either going through that article and building the application with me as we go or you can get the source code from github, https://github.com/arief-samuel/TodoApp/tree/.
+Part 1:https://asp-net-core-5-rest-api-step-by-step-2mb6
+Part 2: https://asp-net-core-5-rest-api-authentication-with-jwt-step-by-step-140d
 
 
-Once we have our code ready lets get started.
+This is part 3 of our Rest API journey, and we will be basing our current work on our previous Todo REST API application that we have created in our last article, https:/asp-net-core-5-rest-api-authentication-with-jwt-step-by-step-140d. You can follow along by either going through the article and building the application with me as we go or you can get the source code from github.
 
-The first thing we need to install some package to utilise authentication
+Before we start implementing the Refresh Token functionality, let us examine how the refresh token logic will work.
 
-```bash
-dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer 
-dotnet add package Microsoft.AspNetCore.Identity.EntityFrameworkCore 
-dotnet add package Microsoft.AspNetCore.Identity.UI 
+By nature JWT tokens have an expiry time, the shorter the time the safer it is. there is 2 options to get new tokens after the JWT token has expired
+
+Ask the user to login again, this is not a good user experience
+Use refresh tokens to automatically re-authenticate the user and generate new JWT tokens.
+So what is a refresh token, a refresh token can be anything from strings to Guids to any combination as long as its unique
+
+Why is it important to have a short lived JWT token, if someone is stole our JWT token and started doing requests on the server, that token will only last for an amount of time before it expires and become useless. The only way to get a new token is using the refresh tokens or login in.
+
+Another main point is what happens to all of the tokens that were generated based on an user credentials if the user changes their password. we don't want to invalidate all of the sessions. We can just update the refresh tokens so a new JWT token based on the new credentials will be generated.
+
+As well a good way to implement automatic refresh tokens is before every request the client makes we need to check the expiry of the token if its expired we request a new one else we use the token we have to perform the request.
+
+So in out application instead of just generating just a JWT token with every authorisation we will add a refresh token as well.
+
+So lets get started, we will first start by updating our startup class, by making TokenValidationParameters available across the application by adding them to our Dependency Injection Container
+
+remove jwt.SaveToken = true;
+```csharp
+jwt.SaveToken = true;
 ```
-
-lets see how our csproj look like :
-```xml
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="5.0.8" />
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="5.0.8" />
-    <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="5.0.8" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="5.0.8" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="5.0.8">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Swashbuckle.AspNetCore" Version="5.6.3" />
-  </ItemGroup>
-
-</Project>
-```
-
-then we need to do is we need to update our appsettings.json, in our appsettings we will need to add a JWT settings section and within that settings we need to add a JWT secret
-
-```json
-"JwtConfig": {
-
-    "Secret" : "thbwtkuaxtqjnrwqkewpqxyxjpyqaofw"
-  },
-```
-
-In order for us to generate our secret we are going to use a free web tool to generate a random 32 char string https://www.browserling.com/tools/random-string
-
-After adding the randomly generate 32 char string in our app settings now we need to create a new folder in our root directory called configuration.
-
-Inside this configuration folder we will create a new class called JwtConfig
 
 ```csharp
+var key = Encoding.ASCII.GetBytes(Configuration["JwtConfig:Secret"]);
 
-public class JwtConfig
+var tokenValidationParameters = new TokenValidationParameters {
+    ValidateIssuerSigningKey = true,
+    IssuerSigningKey = new SymmetricSecurityKey(key),
+    ValidateIssuer = false,
+    ValidateAudience = false,
+    ValidateLifetime = true,
+    RequireExpirationTime = false,
+
+    // Allow to use seconds for expiration of token
+    // Required only when token lifetime less than 5 minutes
+    // THIS ONE
+    ClockSkew = TimeSpan.Zero
+};
+
+services.AddSingleton(tokenValidationParameters);
+
+services.AddAuthentication(options => {
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(jwt => {
+    jwt.SaveToken = true;
+    jwt.TokenValidationParameters = tokenValidationParameters;
+});
+```
+Once the JwtConfig class is updated now we need to update our GenerateJwtToken function in our AuthManagementController our TokenDescriptor Expire value from being fixed to the ExpiryTimeFrame, we need to make it shorter that we have specified
+
+```csharp
+private string GenerateJwtToken(IdentityUser user)
 {
-    public string Secret { get; set; }
+    var jwtTokenHandler = new JwtSecurityTokenHandler();
+
+    var key = Encoding.ASCII.GetBytes(_jwtConfig.Secret);
+
+    var tokenDescriptor = new SecurityTokenDescriptor
+    {
+        Subject = new ClaimsIdentity(new []
+        {
+            new Claim("Id", user.Id), 
+            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        }),
+        Expires = DateTime.UtcNow.AddSeconds(30),
+        SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+    };
+
+    var token = jwtTokenHandler.CreateToken(tokenDescriptor);
+    var jwtToken = jwtTokenHandler.WriteToken(token);
+
+    return jwtToken;
 }
 ```
 
-Now we need to update our startup class, inside our ConfigureServices method we need to add the below in order to inject our JwtConfiguration in our application
+The step will be to update our AuthResult in our configuration folder, we need to add a new property which will be catered for the refresh token
 ```csharp
-services.Configure<JwtConfig>(Configuration.GetSection("JwtConfig"));
+public class AuthResult
+{
+    public string Token { get; set; }
+    public string RefreshToken { get; set; }
+    public bool Success { get; set; }
+    public List<string> Errors { get; set; }
+}
 ```
 
-Adding these configuration in our startup class register the configurations in our Asp.Net core middlewear and in our IOC container.
-
-The next step is adding and configuring authentication in our startup class, inside our ConfigureServices method we need to add the following :
+We will add a new class called TokenRequest inside our Models/DTOs/Requests which will be responsible on accepting new request for the new endpoint that we will create later on to manage the refresh token
 ```csharp
-// within this section we are configuring the authentication and setting the default scheme
- services.AddAuthentication(options =>
-            {
-                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultScheme = JwtBearerDefaults.AuthenticationScheme;
-                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-            })
-            .AddJwtBearer(jwt =>
-            {
-                var key = Encoding.ASCII.GetBytes(Configuration["JwtConfig:Secret"]);
-
-                jwt.SaveToken = true;
-                jwt.TokenValidationParameters = new TokenValidationParameters
-                {
-                    ValidateIssuerSigningKey = true,// this will validate the 3rd part of the jwt token using the secret that we added in the appsettings and verify we have generated the jwt token
-                    IssuerSigningKey = new SymmetricSecurityKey(key), // Add the secret key to our Jwt encryption
-                    ValidateIssuer = false,
-                    ValidateAudience = false,
-                    RequireExpirationTime = false,
-                    ValidateLifetime = true
-                };
-            });
-
-            services.AddDefaultIdentity<IdentityUser>(options =>
-                options.SignIn.RequireConfirmedAccount = true)
-                    .AddEntityFrameworkStores<TodoAppDbContext>();
+public class TokenRequest
+{
+    [Required]
+    public string Token { get; set; }
+    [Required]
+    public string RefreshToken { get; set; }
+}
 ```
 
-After updating the ConfigureServices we need to update the Configure method by adding authentication
-
+The next step is to create a new model called RefreshToken, in our Models folder.
 ```csharp
-app.UseAuthentication();
-```
-Once we add the configurations we need to build the application to see if everything is still building as it should.
+public class RefreshToken
+{
+    public int Id { get; set; }
+    public string UserId { get; set; } // Linked to the AspNet Identity User Id
+    public string Token { get; set; }
+    public string JwtId { get; set; } // Map the token with jwtId
+    public bool IsUsed { get; set; } // if its used we dont want generate a new Jwt token with the same refresh token
+    public bool IsRevoked { get; set; } // if it has been revoke for security reasons
+    public DateTime AddedDate { get; set; }
+    public DateTime ExpiryDate { get; set; } // Refresh token is long lived it could last for months.
 
+    [ForeignKey(nameof(UserId))]
+    public IdentityUser User {get;set;}
+}
+```
+
+Once the model is added we need to update our TodoAppDbContext
+```c#
+public virtual DbSet<RefreshToken> RefreshTokens {get;set;}
+```
+Now lets create the migrations for our TodoAppDbContext so we can reflect the changes in your database
 ```bash
-dotnet run
-dotnet build
-```
-
-The next step is to update our TodoAppDbContext to take advantage of the Identity provider that Asp.Net provide for us, will navigate to our TodoAppDbContext in the Data folder and we update the ApiDbContext class as the following
-
-```csharp
-public class ApiDbContext : IdentityDbContext
-```
-by inheriting from IdentityDbContext instead of DbContext, EntityFramework will know that we are using authentication and it will build the infrastructure for us to utilise the default identity tables.
-
-To Generate the identity tables in our database we need to prepare migrations scripts and run them. to do that inside the terminal we need to type the following
-```bash
-dotnet ef migrations add "Adding authentication to our Api"
+dotnet ef migrations add "Added refresh tokens table"
 dotnet ef database update
 ```
-![migration](https://user-images.githubusercontent.com/63085636/127414701-be5f924c-dd1a-4866-9266-7f4447b52613.PNG)
-Once our migrations is completed we can open our database app.db with SQLite studio and we can see that our identity tables has been created for us by Entity Framework
-![sqlitestudio](https://user-images.githubusercontent.com/63085636/127414852-3399a8fa-ded8-42bc-a7e1-f50993efa54a.PNG)
-The next step will be to setup our controllers and build the registration process for the user. Inside our controller folder will need to create a controller and our DTOs (data transfer objects).
+Our next step will be to create our new Endpoint "RefreshToken" in our AuthManagementController. The first thing we need to do is to inject the TokenValidationParameters
 
-Will start by adding a new folder called Domain in our root directory, and we add a class called AuthResult
 ```csharp
-using System.Collections.Generic;
+private readonly TokenValidationParameters _tokenValidationParameters;
+private readonly ApiDbContext _apiDbContext;
 
-namespace TodoApp.Domain
+public AuthManagementController(
+    UserManager<IdentityUser> userManager,
+    IOptionsMonitor<JwtConfig> optionsMonitor,
+    TokenValidationParameters tokenValidationParameters,
+    ApiDbContext apiDbContext)
 {
-    public class AuthResult
+    _userManager = userManager;
+    _jwtConfig = optionsMonitor.CurrentValue;
+    _tokenValidationParameters = tokenValidationParameters;
+    _apiDbContext = apiDbContext;
+}
+Once we inject the required parameters we need to update the GenerateToken function to include the refresh token
+private async Task<AuthResult> GenerateJwtToken(IdentityUser user)
+{
+    var jwtTokenHandler = new JwtSecurityTokenHandler();
+
+    var key = Encoding.ASCII.GetBytes(_jwtConfig.Secret);
+
+    var tokenDescriptor = new SecurityTokenDescriptor
     {
-        public string Token { get; set; }
-        public bool Result { get; set; }
-        public List<string> Errors { get; set; }
-    }
+        Subject = new ClaimsIdentity(new []
+        {
+            new Claim("Id", user.Id), 
+            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+            new Claim(JwtRegisteredClaimNames.Sub, user.Email),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        }),
+        Expires = DateTime.UtcNow.Add(_jwtConfig.ExpiryTimeFrame),
+        SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256Signature)
+    };
+
+    var token = jwtTokenHandler.CreateToken(tokenDescriptor);
+    var jwtToken = jwtTokenHandler.WriteToken(token);
+
+    var refreshToken = new RefreshToken(){
+        JwtId = token.Id,
+        IsUsed = false,
+        UserId = user.Id,
+        AddedDate = DateTime.UtcNow,
+        ExpiryDate = DateTime.UtcNow.AddYears(1),
+        IsRevoked = false,
+        Token = RandomString(25) + Guid.NewGuid()
+    };
+
+    await _apiDbContext.RefreshTokens.AddAsync(refreshToken);
+    await _apiDbContext.SaveChangesAsync();
+
+    return new AuthResult() {
+        Token = jwtToken,
+        Success = true,
+        RefreshToken = refreshToken.Token
+    };
+}
+
+public  string RandomString(int length)
+{
+    var random = new Random();
+    var chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    return new string(Enumerable.Repeat(chars, length)
+    .Select(s => s[random.Next(s.Length)]).ToArray());
 }
 ```
-Will start by adding some folders to organise our DTOs, inside the Models folder will add a folder called DTO and within the DTO folder will create 2 folders Requests/Responses
+Now lets update the return to both existing actions as we have changed the return type for GenerateJwtToken
 
-We need to add the UserRegistrationRequestDto which will be used by our registration action in the Controller. Then will navigate to Models/DTO/Requests and add a new class called UserRegistrationRequestDto
-
-Models/Dto/Requests/UserRegistrationRequestDto.cs
-// For simplicity we are only adding these 3 feilds we can change it and make it as complex as we need
+For Login Action:
 ```csharp
-public class UserRegistrationRequestDto
-{
-    [Required]
-    public string Name { get; set; }
-    [Required]
-    public string Email { get; set; }
-    [Required]
-    public string Password { get; set; }
-}
+return Ok(await GenerateJwtToken(existingUser));
 ```
 
-Model/Dto/Response/RegistrationResponse.cs
-
+For Register Action:
 ```csharp
-// We are inheriting from AuthResult class
-public class RegistrationResponse : AuthResult
-{
-
-}
+return Ok(await GenerateJwtToken(existingUser));
 ```
-Now we need to add our user registration controller, inside our controller folder we add a new class we call it AuthManagementController and we update it with the code below
-```csharp
-using System;
-using System.Collections.Generic;
-using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
-using System.Security.Claims;
-using System.Text;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Identity;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
-using TodoApp.Configuration;
-using TodoApp.Dtos.Requests;
-using TodoApp.Dtos.Responses;
 
-namespace TodoApp.Controller
+Now we can start building our RefreshToken Action
+
+```csharp
+[HttpPost]
+[Route("RefreshToken")]
+public async Task<IActionResult> RefreshToken([FromBody] TokenRequest tokenRequest)
 {
-    [Route("api[controller]")]
-    [ApiController]
-    public class AuthManagementController : ControllerBase
+    if(ModelState.IsValid)
     {
-        private readonly UserManager<IdentityUser> _userManager;
-        private readonly JwtConfig _jwtConfig;
+        var res = await VerifyToken(tokenRequest);
 
-        public AuthManagementController(
-            UserManager<IdentityUser> userManager,
-            IOptionsMonitor<JwtConfig> optionsMonitor)
-        {
-            _userManager = userManager;
-            _jwtConfig = optionsMonitor.CurrentValue;
-        }
-
-        [HttpPost("register")]
-        public async Task<IActionResult> Register(
-            [FromBody] UserRegistrationRequestDto user)
-        {
-            // Check if the incoming request is valid
-            if (!ModelState.IsValid)
-                return BadRequest(new RegistrationResponse()
-                {
-                    Result = false,
-                    Errors = new List<string>(){
-                        "Invalid Payload"
-                    }
-                });
-
-            // check i the user with the same email exist
-            var existingUser = await _userManager.FindByEmailAsync(user.Email);
-            if (existingUser is not null)
-                return BadRequest(new RegistrationResponse()
-                {
-                    Result = false,
-                    Errors = new List<string>(){
-                        "Email already exist"
-                    }
-                });
-
-            var newUser = new IdentityUser() { Email = user.Email, UserName = user.Name };
-            var isCreated = await _userManager.CreateAsync(newUser, user.Password);
-            if (!isCreated.Succeeded)
-                return new JsonResult(new RegistrationResponse()
-                {
-                    Result = false,
-                    Errors = isCreated.Errors.Select(x => x.Description).ToList()
-                })
-                { StatusCode = 500 };
-
-            var jwtToken = GenerateJwtToken(newUser);
-            return Ok(new RegistrationResponse()
-            {
-                Result = true,
-                Token = jwtToken
+        if(res == null) {
+                return BadRequest(new RegistrationResponse(){
+                Errors = new List<string>() {
+                    "Invalid tokens"
+                },
+                Success = false
             });
         }
 
-        private string GenerateJwtToken(IdentityUser user)
+        return Ok(res);
+    }
+
+    return BadRequest(new RegistrationResponse(){
+            Errors = new List<string>() {
+                "Invalid payload"
+            },
+            Success = false
+    });
+}
+private async Task<AuthResult> VerifyToken(TokenRequest tokenRequest)
+{
+    var jwtTokenHandler = new JwtSecurityTokenHandler();
+
+    try
+    {
+        // This validation function will make sure that the token meets the validation parameters
+        // and its an actual jwt token not just a random string
+        var principal = jwtTokenHandler.ValidateToken(tokenRequest.Token, _tokenValidationParameters, out var validatedToken);
+
+        // Now we need to check if the token has a valid security algorithm
+        if(validatedToken is JwtSecurityToken jwtSecurityToken)
         {
-            // Now its time to define the jwt token which will be responsible of creating our tokens
-            var jwtTokenHandler = new JwtSecurityTokenHandler();
+            var result = jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase);
 
-            // We get our secret from the appsettings
-            var key = Encoding.ASCII.GetBytes(_jwtConfig.Secret);
+            if(result == false) {
+                 return null;
+            }
+        }
 
-            // we define our token descriptor
-            // We need to utilise claims which are properties in our token which gives information about the token
-            // which belong to the specific user who it belongs to
-            // so it could contain their id, name, email the good part is that these information
-            // are generated by our server and identity framework which is valid and trusted
-            var tokenDescriptor = new SecurityTokenDescriptor
-            {
-                Subject = new ClaimsIdentity(new[]{
-                    new Claim("Id", user.Id),
-                    new Claim(JwtRegisteredClaimNames.Sub, user.Email),
-                    new Claim(JwtRegisteredClaimNames.Email,user.Email),
-                    // the JTI is used for our refresh token which we will be convering in the next video
-                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-                }),
-                // the life span of the token needs to be shorter and utilise refresh token to keep the user signedin
-                Expires = DateTime.Now.AddHours(6),
-                // here we are adding the encryption alogorithim information which will be used to decrypt our token
-                SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha512Signature)
+                // Will get the time stamp in unix time
+        var utcExpiryDate = long.Parse(principal.Claims.FirstOrDefaultAsync(x => x.Type == JwtRegisteredClaimNames.Exp).Value);
+
+        // we convert the expiry date from seconds to the date
+        var expDate = UnixTimeStampToDateTime(utcExpiryDate);
+
+        if(expDate > DateTime.UtcNow)
+        {
+            return new AuthResult(){
+                Errors = new List<string>() {"We cannot refresh this since the token has not expired"},
+                Success = false
             };
-            var token = jwtTokenHandler.CreateToken(tokenDescriptor);
-            var jwtToken = jwtTokenHandler.WriteToken(token);
-
-            return jwtToken;
         }
+
+        // Check the token we got if its saved in the db
+        var storedRefreshToken = await _apiDbContext.RefreshTokens.FirstOrDefaultAsync(x => x.Token == tokenRequest.RefreshToken); 
+
+        if(storedRefreshToken == null)
+        {
+            return new AuthResult(){
+                Errors = new List<string>() {"refresh token doesnt exist"},
+                Success = false
+            };
+        }
+
+        // Check the date of the saved token if it has expired
+        if(DateTime.UtcNow > storedRefreshToken.ExpiryDate)
+        {
+            return new AuthResult(){
+                Errors = new List<string>() {"token has expired, user needs to relogin"},
+                Success = false
+            };
+        }
+
+        // check if the refresh token has been used
+        if(storedRefreshToken.IsUsed)
+        {
+            return new AuthResult(){
+                Errors = new List<string>() {"token has been used"},
+                Success = false
+            };
+        }
+
+        // Check if the token is revoked
+        if(storedRefreshToken.IsRevoked)
+        {
+            return new AuthResult(){
+                Errors = new List<string>() {"token has been revoked"},
+                Success = false
+            };
+        }
+
+         // we are getting here the jwt token id
+        var jti = principal.Claims.SingleOrDefault(x => x.Type == JwtRegisteredClaimNames.Jti).Value;
+
+        // check the id that the recieved token has against the id saved in the db
+        if(storedRefreshToken.JwtId != jti)
+        {
+           return new AuthResult(){
+                Errors = new List<string>() {"the token doenst mateched the saved token"},
+                Success = false
+            };
+        }
+
+        storedRefreshToken.IsUsed = true;
+        _apiDbContext.RefreshTokens.Update(storedRefreshToken);
+        await _apiDbContext.SaveChangesAsync();
+
+                var dbUser = await _userManager.FindByIdAsync(storedRefreshToken.UserId);
+        return await GenerateJwtToken(dbUser);
+    }
+    catch(Exception ex)
+    {
+        return null;
     }
 }
-```
-Once we finish the registration action we can now test it in postman and get the jwt token
 
-So the next step will be creating the user login request.
-```csharp
-public class UserLoginRequest
+private DateTime UnixTimeStampToDateTime( double unixTimeStamp )
 {
-    [Required]
-    public string Email { get; set; }
-    [Required]
-    public string Password { get; set; }
+    // Unix timestamp is seconds past epoch
+    System.DateTime dtDateTime = new DateTime(1970,1,1,0,0,0,0,System.DateTimeKind.Utc);
+    dtDateTime = dtDateTime.AddSeconds( unixTimeStamp ). ToUniversalTime();
+    return dtDateTime;
 }
+
 ```
+Finally we need to make sure everything still builds and run
 
-After that we need to add our login action in the AuthManagementControtller
 
-```csharp
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] UserLoginRequest user)
-        {
-            if (!ModelState.IsValid)
-                return BadRequest(new RegistrationResponse()
-                {
-                    Result = false,
-                    Errors = new List<string>(){
-                                         "Invalid payload"
-                                    }
-                });
-
-            var existingUser = await _userManager.FindByEmailAsync(user.Email);
-            if (existingUser is null)
-                return BadRequest(new RegistrationResponse()
-                {
-                    Result = false,
-                    Errors = new List<string>(){
-                        "Invalid authentication request"
-                    }
-                });
-
-            // Now we need to check if the user has inputed the right password   
-            var isCorrect = await _userManager.CheckPasswordAsync(existingUser, user.Password);
-            if (!isCorrect)
-                return BadRequest(new RegistrationResponse()
-                {
-                    Result = false,
-                    Errors = new List<string>(){
-                            "Invalid authentication request"
-                                    }
-                });
-
-            var jwtToken = GenerateJwtToken(existingUser);
-            return Ok(new RegistrationResponse()
-            {
-                Result = true,
-                Token = jwtToken
-            });
-        }
+```bash
+dotnet build
+dotnet run
 ```
+Once we make sure everything is as it should be we will test the app using postman, the testing scenarios will be as follow:
 
-now we can test it out and we can see that our jwt tokens has been generated successfully, the next step is to secure our controller, to do that all we need to do is add the Authorise attribute to the controller
-```csharp
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-[Route("api/[controller]")] // api/todo
-[ApiController]
-public class TodoController : ControllerBase
-```
-And now if we test it we are not able to execute any request since we are not authorised, in order for us to send authorised requests we need to add the authorisation header with the bearer token so that Asp.Net can verify it and give us permission to execute the actions
-
+login in generating a JWT token with a refresh token ⇒ fail
+directly try to refresh the token without waiting for it to expire ⇒ fail
+waiting for the JWT token to expire and request a refresh token ⇒ Success
+re-using the same refresh token ⇒ fail
 Thank you for taking the time and reading the article
 
-This is Part 2 of API dev series you can check the different parts by following the links:
+This is Part 3 of API dev series you can check the different parts by following the links:
 
-Part 1: https://arief21.azurewebsites.net/2021/06/28/create-restful-web-api-using-net-6-and-sqlite-with-entity-framework
+Part 1:https://asp-net-core-5-rest-api-step-by-step-2mb6
+Part 2: https://asp-net-core-5-rest-api-authentication-with-jwt-step-by-step-140d
 
-Part 3: https://arief21.azurewebsites.net/
+Thanks @grandsilence for your feedback the article has been updated

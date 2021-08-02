@@ -6,7 +6,8 @@ namespace TodoApp.Data
 {
     public class TodoAppDbContext : IdentityDbContext
     {
-        public DbSet<Item> Items { get; set; }
+        public virtual DbSet<RefreshToken> RefreshTokens { get; set; }
+        public virtual DbSet<Item> Items { get; set; }
 
         public TodoAppDbContext(DbContextOptions<TodoAppDbContext> options) : base(options)
         {
